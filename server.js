@@ -44,6 +44,9 @@ CREATE TABLE IF NOT EXISTS prices (
  service TEXT PRIMARY KEY, price TEXT NOT NULL
 );
 `);
+if (!db.prepare('PRAGMA table_info(files)').all().some(col => col.name === 'direction')) {
+  db.exec("ALTER TABLE files ADD COLUMN direction TEXT NOT NULL DEFAULT 'incoming'");
+}
 const now = () => new Date().toISOString();
 const normEmail = e => String(e || '').trim().toLowerCase();
 const id = () => crypto.randomUUID();
@@ -205,8 +208,24 @@ app.get('/api/jobs', loginRequired, (req, res) => {
   const rows = req.user.role === 'admin' ?
     db.prepare(`SELECT jobs.*, users.email customer_email FROM jobs JOIN users ON users.id=jobs.user_id ORDER BY jobs.created_at DESC LIMIT 500`).all() :
     db.prepare(`SELECT jobs.*, users.email customer_email FROM jobs JOIN users ON users.id=jobs.user_id WHERE jobs.user_id=? ORDER BY jobs.created_at DESC LIMIT 500`).all(req.user.id);
-  const filesStmt = db.prepare('SELECT id,original_name,size FROM files WHERE job_id=?');
+  const filesStmt = db.prepare('SELECT id,original_name,size,direction FROM files WHERE job_id=?');
   res.json({ jobs: rows.map(j => ({ ...j, files: filesStmt.all(j.id) })) });
+});
+app.post('/api/admin/jobs/:jobId/deliver', loginRequired, adminOnly, (req, res) => {
+  const job = db.prepare('SELECT id FROM jobs WHERE id=?').get(req.params.jobId);
+  if (!job) return res.status(404).json({ error:'İş bulunamadı.' });
+  uploader(req, res, err => {
+    if (err) { cleanup(req.files); return res.status(400).json({error:err.message || 'Yükleme hatası.'}); }
+    if (!(req.files || []).length) return res.status(400).json({error:'En az bir teslim dosyası gerekli.'});
+    try {
+      db.transaction(() => {
+        const add = db.prepare('INSERT INTO files(id,job_id,original_name,stored_name,mime,size,direction) VALUES(?,?,?,?,?,?,?)');
+        for (const file of req.files) add.run(id(),job.id,path.basename(file.originalname).slice(0,220),file.filename,file.mimetype,file.size,'outgoing');
+        db.prepare('UPDATE jobs SET status=? WHERE id=?').run('Teslim edildi',job.id);
+      })();
+      res.status(201).json({ok:true,uploaded:req.files.length});
+    } catch(error) {cleanup(req.files);console.error(error);res.status(500).json({error:'Teslim dosyaları kaydedilemedi.'});}
+  });
 });
 app.get('/api/files/:fileId', loginRequired, (req, res) => {
   const file = db.prepare('SELECT files.*,jobs.user_id FROM files JOIN jobs ON jobs.id=files.job_id WHERE files.id=?').get(req.params.fileId);

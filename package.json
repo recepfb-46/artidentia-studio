@@ -1,0 +1,15 @@
+{
+  "name": "artidentia-studio",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Artidentia Studio dental design portal",
+  "engines": { "node": ">=22" },
+  "scripts": { "start": "node server.js", "check": "node --check server.js && node --check public/app.js" },
+  "dependencies": {
+    "better-sqlite3": "^12.2.0",
+    "express": "^4.21.2",
+    "express-rate-limit": "^8.0.1",
+    "helmet": "^8.1.0",
+    "multer": "^2.0.2"
+  }
+}

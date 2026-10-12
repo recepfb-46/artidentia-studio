@@ -7,6 +7,7 @@ const Database = require('better-sqlite3');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { notifyNewJob, notifyDeliveredJob } = require('./notifications');
 
 const app = express();
 app.disable('x-powered-by');
@@ -201,6 +202,7 @@ app.post('/api/jobs', loginRequired, rateLimit({windowMs:60*60*1000,limit:12,sta
         for (const file of req.files) add.run(id(), jobId, path.basename(file.originalname).slice(0, 220), file.filename, file.mimetype, file.size);
       })();
       res.status(201).json({ ok: true, id: jobId });
+      void notifyNewJob({ jobId, title, service }).catch(e => console.error('Mail error:', e.message));
     } catch (error) { cleanup(req.files); console.error(error); res.status(500).json({ error: 'İş kaydedilemedi.' }); }
   });
 });
@@ -224,12 +226,15 @@ app.post('/api/admin/jobs/:jobId/deliver', loginRequired, adminOnly, (req, res) 
         db.prepare('UPDATE jobs SET status=? WHERE id=?').run('Teslim edildi',job.id);
       })();
       res.status(201).json({ok:true,uploaded:req.files.length});
+      const receiver = db.prepare('SELECT users.email FROM jobs JOIN users ON users.id=jobs.user_id WHERE jobs.id=?').get(job.id);
+      if (receiver) void notifyDeliveredJob({ email:receiver.email, jobId:job.id }).catch(e => console.error('Mail error:', e.message));
     } catch(error) {cleanup(req.files);console.error(error);res.status(500).json({error:'Teslim dosyaları kaydedilemedi.'});}
   });
 });
 app.get('/api/files/:fileId', loginRequired, (req, res) => {
   const file = db.prepare('SELECT files.*,jobs.user_id FROM files JOIN jobs ON jobs.id=files.job_id WHERE files.id=?').get(req.params.fileId);
   if (!file || (req.user.role !== 'admin' && file.user_id !== req.user.id)) return res.status(404).json({ error: 'Dosya bulunamadı.' });
+  if (!/^[0-9a-f-]{36}\.upload$/i.test(file.stored_name)) return res.status(404).json({error:'Dosya bulunamadı.'});
   const target = path.join(uploadDir, file.stored_name);
   if (!fs.existsSync(target)) return res.status(404).json({ error: 'Dosya depoda bulunamadı.' });
   res.set('Cache-Control', 'no-store');

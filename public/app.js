@@ -90,7 +90,7 @@
       const {jobs} = await api('/api/jobs');
       if (!jobs.length) { box.innerHTML = '<div class="empty-state">Henüz iş bulunmuyor. “Yeni İş Gönder” bölümünden ilk talebinizi oluşturabilirsiniz.</div>'; return; }
       box.innerHTML = jobs.map(job => `<article class="job-card"><div class="job-top"><div><h3>${escapeHtml(job.title)}</h3><p>${escapeHtml(job.service)}</p></div><span class="status-pill">${escapeHtml(job.status)}</span></div><p class="job-meta">${escapeHtml(new Date(job.created_at).toLocaleString('tr-TR'))}${currentUser.role === 'admin' ? ' · ' + escapeHtml(job.customer_email) : ''}</p>${job.notes ? '<p>' + escapeHtml(job.notes) + '</p>' : ''}<div class="dash-label" style="margin:14px 0 4px">MÜŞTERİ DOSYALARI</div><div class="files-list">${job.files.filter(f=>f.direction!=='outgoing').map(f=>`<a href="/api/files/${encodeURIComponent(f.id)}" download>↓ ${escapeHtml(f.original_name)} (${Math.max(1,Math.round(f.size/1024))} KB)</a>`).join('')}</div>${job.files.some(f=>f.direction==='outgoing')?`<div class="dash-label" style="margin:18px 0 4px">TAMAMLANAN TASARIMLAR</div><div class="files-list">${job.files.filter(f=>f.direction==='outgoing').map(f=>`<a href="/api/files/${encodeURIComponent(f.id)}" download>↓ ${escapeHtml(f.original_name)} (${Math.max(1,Math.round(f.size/1024))} KB)</a>`).join('')}</div>`:''}${currentUser.role==='admin'?`<form class="stack-form" data-deliver="${escapeHtml(job.id)}" style="margin-top:18px"><label>Bitmiş tasarımı müşteriye teslim et<input name="files" type="file" multiple required accept=".stl,.ply,.obj,.3mf,.zip,.rar,.7z,.pdf,.jpg,.jpeg,.png,.webp,.dcm,.dicom"><small>En fazla 8 dosya, her biri 150 MB.</small></label><button class="btn btn-gold" type="submit">Dosyaları Teslim Et ↗</button></form><div class="status-row"><select aria-label="İş durumu" data-job="${escapeHtml(job.id)}">${statusOptions.map(status=>`<option ${job.status === status ? 'selected' : ''}>${escapeHtml(status)}</option>`).join('')}</select><button data-save="${escapeHtml(job.id)}">Güncelle</button></div>` : ''}</article>`).join('');
-      $('#jobList [data-deliver]').forEach(form => form.addEventListener('submit', async event => {
+      $$('#jobList [data-deliver]').forEach(form => form.addEventListener('submit', async event => {
         event.preventDefault();
         const files=[...form.querySelector('input[type="file"]').files];
         if (!files.length || files.length>8 || files.some(file=>file.size>150*1024*1024)) {flash('1–8 dosya, en fazla 150 MB.',true);return;}
@@ -101,7 +101,7 @@
           flash('Tasarım dosyaları müşteriye teslim edildi.');await loadJobs();
         } catch(error) {flash(error.message,true);button.disabled=false;button.textContent='Dosyaları Teslim Et ↗';}
       }));
-      $('#jobList [data-save]').forEach(btn => btn.addEventListener('click', async () => {
+      $$('#jobList [data-save]').forEach(btn => btn.addEventListener('click', async () => {
         const jobId = btn.dataset.save; const select = $$('#jobList [data-job]').find(s => s.dataset.job === jobId);
         try { await api(`/api/admin/jobs/${encodeURIComponent(jobId)}`, {method:'PATCH',body:JSON.stringify({status:select.value})}); flash('İş durumu güncellendi.'); loadJobs(); } catch (e) { flash(e.message,true); }
       }));
